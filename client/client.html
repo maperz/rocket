@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+
+    <title>Rocket</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.0.3/socket.io.js"></script>
+
+    <script>
+      var socket = io.connect("###WSADDRESS###");
+
+      socket.on("data", function (data) {
+        output("Received message: " + data);
+      });
+
+      socket.on("file", function (data) {
+        console.log("Received file with name: " + data.name);
+        appendImage(data);
+      });
+
+      socket.on("connect", function () {
+        console.log("Connected");
+      });
+
+      socket.on("disconnect", function () {
+        removeAllImages();
+      });
+
+      function appendImage(file) {
+        let item = document.createElement("div");
+        item.setAttribute("class", "item");
+
+        let image = document.createElement("img");
+        let srcData = "data:image/png;base64, " + file.data;
+
+        image.setAttribute("src", srcData);
+
+        var a = document.createElement("a");
+        a.href = srcData;
+        a.download = file.name;
+        a.text = "Download";
+
+        item.appendChild(image);
+        item.appendChild(a);
+
+        document.getElementById("gallery").prepend(item);
+      }
+
+      function removeAllImages(file) {
+        var gallery = document.getElementById("gallery");
+        while (gallery.firstChild) {
+          gallery.removeChild(gallery.lastChild);
+        }
+      }
+    </script>
+  </head>
+  <style>
+    .app {
+      width: 70%;
+      margin: 0 auto;
+    }
+
+    .header {
+      margin-top: 60px;
+      margin-bottom: 60px;
+      padding: 8px;
+      border-radius: 20px;
+      text-align: center;
+      font-size: 22px;
+      text-shadow: rgba(0, 0, 0, 0.4) 3px 3px;
+      color: white;
+      font-family: Helvetica;
+      background-color: #18c371;
+    }
+
+    #gallery {
+      display: grid;
+      grid-template-columns: 33% 33% 33%;
+      padding: 10px;
+    }
+    .item {
+      margin: 10px;
+      background-color: rgba(255, 255, 255, 0.8);
+      font-size: 30px;
+      text-align: center;
+      box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.3);
+      transition: 0.3s;
+      height: 400px;
+      max-height: 400px;
+      background-color: gray;
+    }
+
+    .item img {
+      height: 100%;
+      width: 100%;
+      object-fit: cover;
+    }
+
+    .item:hover {
+      box-shadow: 0 8px 30px 0 rgba(0, 0, 0, 0.4);
+      transform: scale(1.05);
+    }
+  </style>
+  <body>
+    <div class="app">
+      <div class="header">
+        <h1>Rocket</h1>
+      </div>
+
+      <div id="gallery"></div>
+    </div>
+  </body>
+</html>
