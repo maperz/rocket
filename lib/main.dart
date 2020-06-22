@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:connectivity/connectivity.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:rocket/bloc/main_bloc.dart';
@@ -17,6 +20,8 @@ class MyApp extends StatelessWidget {
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light
+        .copyWith(statusBarIconBrightness: Brightness.light));
     return MaterialApp(
       title: 'Rocket',
       debugShowCheckedModeBanner: false,
@@ -48,7 +53,8 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   Animation<double> _animation;
 
   bool _openingSettings = false;
-  bool _starting = false;
+
+  StreamSubscription<ConnectivityResult> _connectivitySubscription;
 
   @override
   void initState() {
@@ -64,7 +70,134 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
             setState(() {});
           });
 
+    WidgetsBinding.instance.addPostFrameCallback(_postFrameCallback);
     super.initState();
+  }
+
+  @override
+  dispose() {
+    super.dispose();
+    _connectivitySubscription.cancel();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var radiusTween = Tween(begin: 0.0, end: 37.0).animate(_animation);
+    var borderRadius = Radius.circular(radiusTween.value);
+    var inverseAnimation = 1.0 - _animation.value;
+
+    var settingsPanel = Tween(begin: 0.0, end: -80.0).animate(_animation);
+
+    var containerHeight =
+        Tween(begin: MediaQuery.of(context).size.height, end: kAppBarHeight)
+            .animate(_animation);
+
+    return BlocConsumer<MainBloc, MainState>(
+      listener: (context, state) {
+        if (state.isRunning) {
+          setState(() {
+            _serverRunningAnimationController.forward();
+          });
+        } else {
+          setState(() {
+            _showSettingsAnimationController.reverse();
+            _serverRunningAnimationController.reverse();
+          });
+        }
+      },
+      builder: (context, state) =>
+          Stack(alignment: Alignment.topCenter, children: [
+        Container(
+            width: MediaQuery.of(context).size.width,
+            color: Colors.white,
+            child: Overview()),
+        Positioned(
+          bottom: 40,
+          child: _scaleAndFade(
+              child: FloatingActionButton(
+                backgroundColor: Theme.of(context).primaryColor,
+                onPressed: () => _showFilePicker(context),
+                child: Icon(Icons.add_a_photo),
+              ),
+              value: _animation.value),
+        ),
+        Transform.translate(
+          offset: Offset(0, 0),
+          child: Container(
+            width: MediaQuery.of(context).size.width,
+            height: containerHeight.value,
+            decoration: BoxDecoration(
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black.withAlpha(50),
+                      offset: Offset(0, 8),
+                      blurRadius: 20)
+                ],
+                color: Theme.of(context).primaryColor,
+                borderRadius: BorderRadius.only(
+                    bottomLeft: borderRadius, bottomRight: borderRadius)),
+            child: SafeArea(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  RocketLogo(size: inverseAnimation),
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16.0),
+                        child: _scaleAndFade(
+                          value: _animation.value,
+                          child: AddressInfo(state.address),
+                        ),
+                      ),
+                      _scaleAndFade(
+                          value: inverseAnimation,
+                          child: Column(
+                            children: <Widget>[
+                              SizedBox(
+                                height: inverseAnimation * 20,
+                              ),
+                              Text("File sharing is rocket science",
+                                  style:
+                                      kHeaderTextStyle.copyWith(fontSize: 20)),
+                              SizedBox(
+                                height: inverseAnimation * 60,
+                              ),
+                              StartButton(
+                                  isEnabled: state.onLocalNetwork,
+                                  onClick: () => _startServer(context))
+                            ],
+                          ))
+                    ],
+                  )
+                ],
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+            top: 270,
+            child: _scaleAndFade(
+                value: _animation.value * 2 - 1.0,
+                child: StopButton(() => _stopServer(context)))),
+        Positioned(
+          bottom: settingsPanel.value,
+          left: 0,
+          right: 0,
+          child: Align(
+              alignment: Alignment.bottomCenter,
+              child: SettingsPanel(
+                  _showSettingsAnimationController, _toggleSettings)),
+        )
+      ]),
+    );
+  }
+
+  _scaleAndFade({@required value, @required child}) {
+    return Opacity(
+        opacity: max(value, 0),
+        child: Transform.scale(scale: value, child: child));
   }
 
   _toggleSettings() {
@@ -82,136 +215,20 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
     BlocProvider.of<MainBloc>(context).add(StopServerEvent());
   }
 
-  @override
-  Widget build(BuildContext context) {
-    var radiusTween = Tween(begin: 0.0, end: 37.0).animate(_animation);
-    var borderRadius = Radius.circular(radiusTween.value);
-    var inverseAnimation = 1.0 - _animation.value;
-
-    var settingsPanel = Tween(begin: 0.0, end: -80.0).animate(_animation);
-
-    var containerHeight =
-        Tween(begin: MediaQuery.of(context).size.height, end: 300.0)
-            .animate(_animation);
-
-    return BlocConsumer<MainBloc, MainState>(
-      listener: (context, state) {
-        if (state is ServerRunning) {
-          setState(() {
-            _serverRunningAnimationController.forward();
-          });
-        }
-
-        if (state is NotStarted) {
-          setState(() {
-            _showSettingsAnimationController.reverse();
-            _serverRunningAnimationController.reverse();
-          });
-        }
-      },
-      builder: (context, state) =>
-          Stack(alignment: Alignment.topCenter, children: [
-        if (state is ServerRunning)
-          Container(
-              width: MediaQuery.of(context).size.width,
-              color: Colors.white,
-              child: (state.files.length == 0)
-                  ? Padding(
-                      padding: EdgeInsets.only(top: 340),
-                      child: NoFilesPlaceholder(),
-                    )
-                  : FileGrid(state.files)),
-        Positioned(
-          bottom: 40,
-          child: _ScaledWithAlpha(
-              child: FloatingActionButton(
-                backgroundColor: Theme.of(context).primaryColor,
-                onPressed: () => _showFilePicker(context),
-                child: Icon(Icons.add_a_photo),
-              ),
-              value: _animation.value),
-        ),
-        Transform.translate(
-          offset: Offset(0, 0),
-          child: Container(
-            width: MediaQuery.of(context).size.width,
-            height: containerHeight.value,
-            decoration: BoxDecoration(
-                boxShadow: [
-                  BoxShadow(
-                      color: Colors.black.withAlpha(75),
-                      offset: Offset(0, 4),
-                      blurRadius: 20)
-                ],
-                color: Theme.of(context).primaryColor,
-                borderRadius: BorderRadius.only(
-                    bottomLeft: borderRadius, bottomRight: borderRadius)),
-            child: SafeArea(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  RocketLogo(size: inverseAnimation),
-                  Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(top: 16.0),
-                        child: _ScaledWithAlpha(
-                          value: _animation.value,
-                          child: AddressInfo(
-                              state is ServerRunning ? state.address : ""),
-                        ),
-                      ),
-                      _ScaledWithAlpha(
-                          value: inverseAnimation,
-                          child: Column(
-                            children: <Widget>[
-                              SizedBox(
-                                height: inverseAnimation * 20,
-                              ),
-                              Text("File sharing is rocket science",
-                                  style:
-                                      kHeaderTextStyle.copyWith(fontSize: 20)),
-                              SizedBox(
-                                height: inverseAnimation * 60,
-                              ),
-                              StartButton(() => _startServer(context))
-                            ],
-                          ))
-                    ],
-                  )
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-            top: 270,
-            child: _ScaledWithAlpha(
-                value: _animation.value * 2 - 1.0,
-                child: StopButton(() => _stopServer(context)))),
-        Positioned(
-          bottom: settingsPanel.value,
-          left: 0,
-          right: 0,
-          child: Align(
-              alignment: Alignment.bottomCenter,
-              child: SettingsPanel(
-                  _showSettingsAnimationController, _toggleSettings)),
-        )
-      ]),
-    );
-  }
-
-  _ScaledWithAlpha({value, child}) {
-    return Opacity(
-        opacity: max(value, 0),
-        child: Transform.scale(scale: value, child: child));
-  }
-
   _showFilePicker(context) async {
     var files = await FilePicker.getMultiFile(type: FileType.image);
     BlocProvider.of<MainBloc>(context).add(AddFilesEvent(files));
+  }
+
+  void _onConnectivityChanged(ConnectivityResult result) {
+    BlocProvider.of<MainBloc>(context)
+        .add(ConnectivityChangedEvent(result == ConnectivityResult.wifi));
+  }
+
+  void _postFrameCallback(Duration timeStamp) async {
+    _onConnectivityChanged(await Connectivity().checkConnectivity());
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
   }
 }
 
@@ -225,13 +242,40 @@ class FileGrid extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: GridView.builder(
-        padding: EdgeInsets.only(top: 320),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2, crossAxisSpacing: 20, mainAxisSpacing: 20),
         itemBuilder: (context, index) => FileItem(() => {}, _files[index]),
         itemCount: _files.length,
       ),
     );
+  }
+}
+
+class Overview extends StatelessWidget {
+  static final kPaddingTop = 50;
+  static final kOffsetTop = kAppBarHeight + kPaddingTop;
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<MainBloc, MainState>(
+        bloc: BlocProvider.of<MainBloc>(context),
+        builder: (context, state) {
+          if (state.isRunning) {
+            if (state.files.length == 0) {
+              return NoFilesPlaceholder(kAppBarHeight + 30);
+            }
+
+            var size = MediaQuery.of(context).size;
+
+            var gridHeight = size.height - kOffsetTop;
+
+            return Padding(
+              padding: EdgeInsets.only(top: kOffsetTop),
+              child: FileGrid(state.files),
+            );
+          }
+          return SizedBox.shrink();
+        });
   }
 }
 
@@ -250,12 +294,16 @@ class FileItem extends StatelessWidget {
 }
 
 class NoFilesPlaceholder extends StatelessWidget {
+  final double offsetTop;
+
+  NoFilesPlaceholder(this.offsetTop);
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.all(20.0).copyWith(top: 20 + offsetTop),
           child: Image.asset(
             "assets/empty.png",
             width: 270,
@@ -277,8 +325,8 @@ class NoFilesPlaceholder extends StatelessWidget {
 }
 
 class SettingsPanel extends StatefulWidget {
-  AnimationController controller;
-  Function toggleVisibility;
+  final AnimationController controller;
+  final Function toggleVisibility;
 
   SettingsPanel(this.controller, this.toggleVisibility);
   @override
@@ -289,7 +337,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
   Animation<double> _heightAnimation;
 
   final double _minValue = 80;
-  final double _maxValue = 300;
+  final double _maxValue = kAppBarHeight;
 
   @override
   void initState() {
@@ -304,12 +352,15 @@ class _SettingsPanelState extends State<SettingsPanel> {
     return Container(
       alignment: Alignment.topCenter,
       height: _heightAnimation.value,
-      decoration: BoxDecoration(boxShadow: [
-        BoxShadow(
-            offset: Offset(0, -4),
-            blurRadius: 20,
-            color: Colors.black.withAlpha(70))
-      ], color: Colors.white, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+                offset: Offset(0, -4),
+                blurRadius: 40,
+                color: Colors.black.withAlpha(40))
+          ],
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       child: GestureDetector(
         onTap: this.widget.toggleVisibility,
         child: Container(
@@ -329,7 +380,10 @@ class _SettingsPanelState extends State<SettingsPanel> {
                     angle: -pi *
                         (_heightAnimation.value - _minValue) /
                         (_maxValue - _minValue),
-                    child: Icon(Icons.arrow_upward))
+                    child: Icon(
+                      Icons.keyboard_arrow_up,
+                      size: 30,
+                    ))
               ],
             ),
           ),
@@ -341,14 +395,15 @@ class _SettingsPanelState extends State<SettingsPanel> {
 
 class StartButton extends StatelessWidget {
   final Function onClick;
+  final bool isEnabled;
 
-  StartButton(this.onClick);
+  StartButton({@required this.onClick, this.isEnabled});
 
   @override
   Widget build(BuildContext context) {
     return RaisedButton(
-        elevation: 10,
-        onPressed: onClick,
+        elevation: 8,
+        onPressed: isEnabled ? onClick : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 86, vertical: 18),
           child: Text(
@@ -369,7 +424,7 @@ class StopButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return RaisedButton(
-        elevation: 10,
+        elevation: 6,
         onPressed: onClick,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 12),
@@ -425,8 +480,8 @@ class AddressInfo extends StatelessWidget {
           borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withAlpha(110),
-                offset: Offset(0, 8),
+                color: Colors.black.withAlpha(50),
+                offset: Offset(0, 6),
                 blurRadius: 20)
           ]),
       child: Padding(
@@ -481,8 +536,8 @@ class AddressInfo extends StatelessWidget {
 
   _grayCircle() {
     return Container(
-        width: 20,
-        height: 20,
+        width: 18,
+        height: 18,
         decoration: new BoxDecoration(
           color: Color(0xFFF0EEEE),
           shape: BoxShape.circle,

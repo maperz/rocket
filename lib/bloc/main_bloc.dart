@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:flutter/material.dart';
 
 import '../server.dart';
 
@@ -14,29 +15,30 @@ class MainBloc extends Bloc<MainEvent, MainState> {
   MainBloc(this.server);
 
   @override
-  MainState get initialState => NotStarted();
+  MainState get initialState => MainState.stopped();
 
   @override
   Stream<MainState> mapEventToState(
     MainEvent event,
   ) async* {
-    MainState current = state;
-
     if (event is StartServerEvent && !server.isRunning()) {
-      yield ServerLoading();
+      yield MainState.loading();
       String address = await server.start();
-      yield ServerRunning(address, []);
+      yield MainState.running(address);
     }
+
     if (event is StopServerEvent && server.isRunning()) {
       await server.stop();
-      yield NotStarted();
+      yield MainState.stopped();
     }
 
-    if (event is AddFilesEvent &&
-        server.isRunning() &&
-        current is ServerRunning) {
+    if (event is ConnectivityChangedEvent) {
+      yield state.connectivityChanged(onLocalNetwork: event.onLocalNetwork);
+    }
+
+    if (event is AddFilesEvent && server.isRunning() && state.isRunning) {
       server.sendFiles(event.files);
-      yield current.AddFiles(event.files);
+      yield state.addFiles(event.files);
     }
   }
 }

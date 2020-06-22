@@ -14,6 +14,14 @@ class StopServerEvent extends MainEvent {
   List<Object> get props => [];
 }
 
+class ConnectivityChangedEvent extends MainEvent {
+  final bool onLocalNetwork;
+  ConnectivityChangedEvent(this.onLocalNetwork);
+
+  @override
+  List<Object> get props => [onLocalNetwork];
+}
+
 class AddFilesEvent extends MainEvent {
   final List<File> files;
   AddFilesEvent(this.files);

@@ -6,3 +6,5 @@ final kHeaderTextStyle = TextStyle(color: Colors.white,
   fontWeight: FontWeight.bold,
   fontStyle: FontStyle.normal
 );
+
+final double kAppBarHeight = 300;
